@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "simple-saga"
-version = "0.0.3"
+version = "0.0.4"
 description = "A lightweight implementation of the Saga pattern for managing distributed transactions in Python"
 authors = ["Tetsuya Wakita <wakita181009@gmail.com>"]
 readme = "README.md"

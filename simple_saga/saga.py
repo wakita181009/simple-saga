@@ -1,7 +1,7 @@
 import asyncio
 import logging
-from collections.abc import Callable
-from typing import Any, TypeVar, cast
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar, cast, overload
 
 from .schema import SagaStep, StepResult
 
@@ -86,10 +86,34 @@ class SimpleSaga:
 
         return False  # Propagate the exception
 
+    @overload
+    async def step(
+        self,
+        action: Callable[..., Awaitable[StepResultT]],
+        compensation: Callable[..., Awaitable[Any]],
+        *,
+        action_args: tuple[Any, ...] = (),
+        action_kwargs: dict[str, Any] | None = None,
+        compensation_args: tuple[Any, ...] = (),
+        compensation_kwargs: dict[str, Any] | None = None,
+    ) -> StepResultT: ...
+
+    @overload
     async def step(
         self,
         action: Callable[..., StepResultT],
         compensation: Callable[..., Any],
+        *,
+        action_args: tuple[Any, ...] = (),
+        action_kwargs: dict[str, Any] | None = None,
+        compensation_args: tuple[Any, ...] = (),
+        compensation_kwargs: dict[str, Any] | None = None,
+    ) -> StepResultT: ...
+
+    async def step(
+        self,
+        action: Callable[..., StepResultT] | Callable[..., Awaitable[StepResultT]],
+        compensation: Callable[..., Any] | Callable[..., Awaitable[Any]],
         *,
         action_args: tuple[Any, ...] = (),
         action_kwargs: dict[str, Any] | None = None,
