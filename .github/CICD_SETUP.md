@@ -13,8 +13,8 @@ The CI/CD pipeline consists of two main workflows:
 
 ### Triggers
 
-- Push to `main` or `staging` branches
-- Pull requests targeting `main` or `staging` branches
+- Push to `main` or `dev` branches
+- Pull requests targeting `main` or `dev` branches
 
 ### Jobs
 
