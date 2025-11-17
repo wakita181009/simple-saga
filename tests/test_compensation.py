@@ -1,4 +1,4 @@
-"""Tests for saga compensation behavior."""
+"""Tests for saga compensation behavior with Arrow-kt style API."""
 
 import pytest
 
@@ -19,12 +19,10 @@ class TestCompensationTrigger:
         def compensation(result: int) -> None:
             compensation_calls.append(result)
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation)
-        saga.add_step(action=action, compensation=compensation)
-        saga.add_step(action=action, compensation=compensation)
-
-        await saga.execute()
+        async with SimpleSaga() as saga:
+            await saga.step(action=action, compensation=compensation)
+            await saga.step(action=action, compensation=compensation)
+            await saga.step(action=action, compensation=compensation)
 
         # No compensations should be called
         assert compensation_calls == []
@@ -40,11 +38,9 @@ class TestCompensationTrigger:
         def compensation(result: int) -> None:
             compensation_calls.append(result)
 
-        saga = SimpleSaga()
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(RuntimeError, match="First step fails"):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=failing_action, compensation=compensation)
 
         # No compensations since nothing succeeded before failure
         assert compensation_calls == []
@@ -63,12 +59,10 @@ class TestCompensationTrigger:
         def compensation(result: int) -> None:
             compensation_calls.append(result)
 
-        saga = SimpleSaga()
-        saga.add_step(action=action1, compensation=compensation)
-        saga.add_step(action=action2, compensation=compensation)
-
         with pytest.raises(RuntimeError, match="Second step fails"):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=action1, compensation=compensation)
+                await saga.step(action=action2, compensation=compensation)
 
         # Only first step should be compensated
         assert compensation_calls == [1]
@@ -87,14 +81,12 @@ class TestCompensationTrigger:
         def failing_action() -> None:
             raise RuntimeError("Last step fails")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, action_args=(1,))
-        saga.add_step(action=action, compensation=compensation, action_args=(2,))
-        saga.add_step(action=action, compensation=compensation, action_args=(3,))
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(RuntimeError, match="Last step fails"):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=lambda: action(1), compensation=compensation)
+                await saga.step(action=lambda: action(2), compensation=compensation)
+                await saga.step(action=lambda: action(3), compensation=compensation)
+                await saga.step(action=failing_action, compensation=compensation)
 
         # All three successful steps should be compensated in reverse order
         assert compensation_calls == [3, 2, 1]
@@ -117,15 +109,13 @@ class TestCompensationOrder:
         def failing_action() -> None:
             raise ValueError("Trigger compensation")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, action_args=("first",))
-        saga.add_step(action=action, compensation=compensation, action_args=("second",))
-        saga.add_step(action=action, compensation=compensation, action_args=("third",))
-        saga.add_step(action=action, compensation=compensation, action_args=("fourth",))
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(ValueError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=lambda: action("first"), compensation=compensation)
+                await saga.step(action=lambda: action("second"), compensation=compensation)
+                await saga.step(action=lambda: action("third"), compensation=compensation)
+                await saga.step(action=lambda: action("fourth"), compensation=compensation)
+                await saga.step(action=failing_action, compensation=compensation)
 
         # Should compensate in reverse order: fourth, third, second, first
         assert compensation_log == ["fourth", "third", "second", "first"]
@@ -144,14 +134,12 @@ class TestCompensationOrder:
         def failing_action() -> None:
             raise RuntimeError("Fail")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, action_args=(5,))  # Returns 10
-        saga.add_step(action=action, compensation=compensation, action_args=(7,))  # Returns 14
-        saga.add_step(action=action, compensation=compensation, action_args=(9,))  # Returns 18
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(RuntimeError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=lambda: action(5), compensation=compensation)  # Returns 10
+                await saga.step(action=lambda: action(7), compensation=compensation)  # Returns 14
+                await saga.step(action=lambda: action(9), compensation=compensation)  # Returns 18
+                await saga.step(action=failing_action, compensation=compensation)
 
         # Each compensation should receive the result of its action
         assert compensation_results == [18, 14, 10]
@@ -174,115 +162,126 @@ class TestCompensationArguments:
         def failing_action() -> None:
             raise ValueError("Fail")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation)
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(ValueError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=action, compensation=compensation)
+                await saga.step(action=failing_action, compensation=compensation)
 
         assert received_values == [{"id": 123, "status": "created"}]
 
     @pytest.mark.asyncio
-    async def test_compensation_explicit_args(self):
-        """Test compensation with explicitly provided arguments."""
+    async def test_compensation_with_additional_args(self):
+        """Test compensation with additional arguments after action result."""
         received_values = []
 
         def action() -> int:
-            return 999  # This should be ignored
+            return 100
 
-        def compensation(value: int) -> None:
-            received_values.append(value)
+        def compensation(result: int, additional: str) -> None:
+            received_values.append((result, additional))
 
         def failing_action() -> None:
             raise ValueError("Fail")
 
-        saga = SimpleSaga()
-        # Explicitly provide compensation args
-        saga.add_step(action=action, compensation=compensation, compensation_args=(42,))
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(ValueError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(
+                    action=action,
+                    compensation=compensation,
+                    compensation_args=("extra_data",),  # Additional arg after result
+                )
+                await saga.step(action=failing_action, compensation=compensation)
 
-        # Should use explicit arg (42), not action result (999)
-        assert received_values == [42]
+        # Should receive both action result and additional arg
+        assert received_values == [(100, "extra_data")]
 
     @pytest.mark.asyncio
-    async def test_compensation_explicit_kwargs(self):
-        """Test compensation with explicitly provided keyword arguments."""
+    async def test_compensation_with_kwargs(self):
+        """Test compensation with keyword arguments."""
         received_values = []
 
         def action() -> int:
-            return 999  # This should be ignored
+            return 999
 
-        def compensation(x: int = 0, y: int = 0) -> None:
-            received_values.append(x + y)
+        def compensation(result: int, x: int = 0, y: int = 0) -> None:
+            received_values.append((result, x, y))
 
         def failing_action() -> None:
             raise ValueError("Fail")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, compensation_kwargs={"x": 10, "y": 20})
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(ValueError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(
+                    action=action,
+                    compensation=compensation,
+                    compensation_kwargs={"x": 10, "y": 20},
+                )
+                await saga.step(action=failing_action, compensation=compensation)
 
-        assert received_values == [30]
+        assert received_values == [(999, 10, 20)]
 
     @pytest.mark.asyncio
     async def test_compensation_mixed_args_kwargs(self):
-        """Test compensation with both args and kwargs."""
+        """Test compensation with both additional args and kwargs."""
         received_values = []
 
-        def action() -> int:
-            return 999  # Ignored
+        def action() -> str:
+            return "action_result"
 
-        def compensation(a: int, b: int, c: int = 0) -> None:
-            received_values.append((a, b, c))
+        def compensation(result: str, extra: int, flag: bool = False) -> None:
+            received_values.append((result, extra, flag))
 
         def failing_action() -> None:
             raise ValueError("Fail")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, compensation_args=(1, 2), compensation_kwargs={"c": 3})
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(ValueError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(
+                    action=action,
+                    compensation=compensation,
+                    compensation_args=(42,),
+                    compensation_kwargs={"flag": True},
+                )
+                await saga.step(action=failing_action, compensation=compensation)
 
-        assert received_values == [(1, 2, 3)]
+        assert received_values == [("action_result", 42, True)]
 
     @pytest.mark.asyncio
-    async def test_compensation_priority_explicit_over_default(self):
-        """Test explicit compensation args take priority over default behavior."""
-        received_values = []
+    async def test_compensation_with_previous_step_results(self):
+        """Test passing previous step results to compensation."""
+        compensation_calls = []
 
-        def action1() -> str:
-            return "action1_result"
+        def create_order() -> dict:
+            return {"order_id": "ORDER-123"}
 
-        def action2() -> str:
-            return "action2_result"
+        def reserve_inventory(order: dict) -> dict:
+            return {"order_id": order["order_id"], "inventory_id": "INV-456"}
 
-        def compensation(value: str) -> None:
-            received_values.append(value)
+        def cancel_order(order: dict) -> None:
+            compensation_calls.append(("cancel_order", order["order_id"]))
+
+        def release_inventory(inventory: dict, order: dict) -> None:
+            # Receives both inventory (action result) and order (via compensation_args)
+            compensation_calls.append(("release_inventory", inventory["inventory_id"], order["order_id"]))
 
         def failing_action() -> None:
             raise ValueError("Fail")
 
-        saga = SimpleSaga()
-        # First step: use default (action result)
-        saga.add_step(action=action1, compensation=compensation)
-        # Second step: use explicit arg
-        saga.add_step(action=action2, compensation=compensation, compensation_args=("explicit_arg",))
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(ValueError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                order = await saga.step(action=create_order, compensation=cancel_order)
+                await saga.step(
+                    action=lambda: reserve_inventory(order),
+                    compensation=release_inventory,
+                    compensation_args=(order,),  # Pass order to compensation
+                )
+                await saga.step(action=failing_action, compensation=lambda: None)
 
-        # Reverse order: action2 (explicit), action1 (default)
-        assert received_values == ["explicit_arg", "action1_result"]
+        # Compensation should receive both action result and previous step data
+        assert compensation_calls == [
+            ("release_inventory", "INV-456", "ORDER-123"),
+            ("cancel_order", "ORDER-123"),
+        ]
 
 
 class TestCompensationFailures:
@@ -306,14 +305,12 @@ class TestCompensationFailures:
         def trigger_failure() -> None:
             raise ValueError("Trigger compensation")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=working_compensation, action_args=(1,))
-        saga.add_step(action=action, compensation=failing_compensation, action_args=(2,))
-        saga.add_step(action=action, compensation=working_compensation, action_args=(3,))
-        saga.add_step(action=trigger_failure, compensation=working_compensation)
-
         with pytest.raises(ValueError, match="Trigger compensation"):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=lambda: action(1), compensation=working_compensation)
+                await saga.step(action=lambda: action(2), compensation=failing_compensation)
+                await saga.step(action=lambda: action(3), compensation=working_compensation)
+                await saga.step(action=trigger_failure, compensation=working_compensation)
 
         # All compensations should be attempted despite step 2's failure
         # Order: 3, 2 (fails), 1
@@ -334,14 +331,12 @@ class TestCompensationFailures:
         def trigger_failure() -> None:
             raise ValueError("Trigger compensation")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=failing_compensation, action_args=(1,))
-        saga.add_step(action=action, compensation=failing_compensation, action_args=(2,))
-        saga.add_step(action=action, compensation=failing_compensation, action_args=(3,))
-        saga.add_step(action=trigger_failure, compensation=failing_compensation)
-
         with pytest.raises(ValueError, match="Trigger compensation"):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=lambda: action(1), compensation=failing_compensation)
+                await saga.step(action=lambda: action(2), compensation=failing_compensation)
+                await saga.step(action=lambda: action(3), compensation=failing_compensation)
+                await saga.step(action=trigger_failure, compensation=failing_compensation)
 
         # All compensation attempts should occur despite failures
         assert compensation_attempts == [3, 2, 1]
@@ -359,13 +354,11 @@ class TestCompensationFailures:
         def trigger_failure() -> None:
             raise ValueError("Original error")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=failing_compensation)
-        saga.add_step(action=trigger_failure, compensation=failing_compensation)
-
         # Should raise the original ValueError, not the compensation RuntimeError
         with pytest.raises(ValueError, match="Original error"):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=action, compensation=failing_compensation)
+                await saga.step(action=trigger_failure, compensation=failing_compensation)
 
 
 class TestCompensationEdgeCases:
@@ -385,12 +378,10 @@ class TestCompensationEdgeCases:
         def failing_action() -> None:
             raise ValueError("Fail")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation)
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(ValueError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=action, compensation=compensation)
+                await saga.step(action=failing_action, compensation=compensation)
 
         assert received_values == [None]
 
@@ -408,12 +399,10 @@ class TestCompensationEdgeCases:
         def failing_action() -> None:
             raise ValueError("Fail")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation)
-        saga.add_step(action=failing_action, compensation=compensation)
-
         with pytest.raises(ValueError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=action, compensation=compensation)
+                await saga.step(action=failing_action, compensation=compensation)
 
         assert received_values == [{"nested": {"data": [1, 2, 3]}, "status": "ok"}]
 
@@ -435,12 +424,10 @@ class TestCompensationEdgeCases:
         def failing_action() -> None:
             raise ValueError("Fail")
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=idempotent_compensation)
-        saga.add_step(action=failing_action, compensation=idempotent_compensation)
-
         with pytest.raises(ValueError):
-            await saga.execute()
+            async with SimpleSaga() as saga:
+                await saga.step(action=action, compensation=idempotent_compensation)
+                await saga.step(action=failing_action, compensation=idempotent_compensation)
 
         # Counter should be decremented once
         assert state["counter"] == 0

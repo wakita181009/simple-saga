@@ -1,15 +1,16 @@
 # Simple Saga
 
-A lightweight implementation of the Saga pattern for managing distributed transactions in Python.
+A lightweight implementation of the Saga pattern for managing distributed transactions in Python, inspired by [Arrow-kt](https://arrow-kt.io/)'s functional approach.
 
 ## Overview
 
-The Saga pattern breaks down distributed transactions into a series of local transactions, each with a compensating transaction that can undo the changes if a later step fails. This library provides a simple, type-safe implementation with support for both synchronous and asynchronous operations.
+The Saga pattern breaks down distributed transactions into a series of local transactions, each with a compensating transaction that can undo the changes if a later step fails. This library provides a simple, type-safe implementation with Arrow-kt style DSL.
 
 ## Features
 
-- ✅ **Simple API** - Easy to use with a fluent interface
+- ✅ **Arrow-kt Style DSL** - Intuitive async context manager API
 - 🔄 **Automatic Compensation** - Failed transactions are automatically rolled back
+- 🔗 **Result Chaining** - Use results from previous steps in subsequent steps
 - ⚡ **Sync & Async Support** - Works with both synchronous and asynchronous functions
 - 🔒 **Type Safe** - Full type hints with mypy support
 - 🪶 **Lightweight** - Zero dependencies (uses only Python standard library)
@@ -33,60 +34,55 @@ poetry add simple-saga
 import asyncio
 from simple_saga import SimpleSaga
 
-# Define your actions
+# Define your business logic
 def create_order(order_id: str) -> dict:
     print(f"Creating order: {order_id}")
     return {"order_id": order_id, "status": "created"}
 
-def cancel_order(order_result: dict) -> None:
-    print(f"Cancelling order: {order_result['order_id']}")
+def cancel_order(order: dict) -> None:
+    print(f"Cancelling order: {order['order_id']}")
 
 async def reserve_inventory(product_id: str) -> dict:
     print(f"Reserving inventory for: {product_id}")
     return {"product_id": product_id, "reserved": True}
 
-async def release_inventory(inventory_result: dict) -> None:
-    print(f"Releasing inventory for: {inventory_result['product_id']}")
+async def release_inventory(inventory: dict) -> None:
+    print(f"Releasing inventory for: {inventory['product_id']}")
 
 def charge_payment(amount: float) -> dict:
     print(f"Charging payment: ${amount}")
     # Simulating a payment failure
     raise Exception("Payment failed")
 
-def refund_payment(payment_result: dict) -> None:
+def refund_payment(payment: dict) -> None:
     print("Refunding payment")
 
-# Create and execute saga
+# Execute the saga
 async def main():
-    saga = SimpleSaga()
-
-    # Add steps with actions and compensations
-    saga.add_step(
-        action=create_order,
-        compensation=cancel_order,
-        action_args=("ORDER-123",)
-    )
-
-    saga.add_step(
-        action=reserve_inventory,
-        compensation=release_inventory,
-        action_args=("PRODUCT-456",)
-    )
-
-    saga.add_step(
-        action=charge_payment,
-        compensation=refund_payment,
-        action_args=(99.99,)
-    )
-
     try:
-        results = await saga.execute()
-        print("✅ Saga completed successfully!")
-        for result in results:
-            print(f"  Step {result.step_index + 1}: {result.result}")
+        async with SimpleSaga() as saga:
+            # Step 1: Create order
+            order = await saga.step(
+                action=lambda: create_order("ORDER-123"),
+                compensation=lambda order: cancel_order(order)
+            )
+
+            # Step 2: Reserve inventory (uses order from step 1)
+            inventory = await saga.step(
+                action=lambda: reserve_inventory("PRODUCT-456"),
+                compensation=lambda inv: release_inventory(inv)
+            )
+
+            # Step 3: Charge payment (this will fail)
+            payment = await saga.step(
+                action=lambda: charge_payment(99.99),
+                compensation=lambda pay: refund_payment(pay)
+            )
+
+            print("✅ All steps completed successfully!")
     except Exception as e:
         print(f"❌ Saga failed: {e}")
-        print("All completed steps have been compensated.")
+        print("✅ All completed steps have been compensated automatically")
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -96,73 +92,100 @@ if __name__ == "__main__":
 
 ```
 Creating order: ORDER-123
-✓ Step 1 completed: create_order
+✓ Step 1 completed: <lambda>
 Reserving inventory for: PRODUCT-456
-✓ Step 2 completed: reserve_inventory
+✓ Step 2 completed: <lambda>
 Charging payment: $99.99
 ✗ Error at step 3: Payment failed
 🔄 Starting compensation...
 Releasing inventory for: PRODUCT-456
-✓ Compensated step 2: release_inventory
+✓ Compensated step 2: <lambda>
 Cancelling order: ORDER-123
-✓ Compensated step 1: cancel_order
+✓ Compensated step 1: <lambda>
 ❌ Saga failed: Payment failed
-All completed steps have been compensated.
+✅ All completed steps have been compensated automatically
 ```
 
-## Advanced Usage
+## Key Features
 
-### Passing Multiple Arguments
+### 1. Result Chaining Between Steps
+
+The most powerful feature is the ability to use results from previous steps:
 
 ```python
-saga.add_step(
-    action=create_user,
-    compensation=delete_user,
-    action_args=("john_doe",),
-    action_kwargs={"email": "john@example.com", "age": 30}
-)
+async with SimpleSaga() as saga:
+    # Step 1: Create order
+    order = await saga.step(
+        action=lambda: create_order("ORDER-123"),
+        compensation=lambda order: cancel_order(order)
+    )
+
+    # Step 2: Use order data from step 1
+    inventory = await saga.step(
+        action=lambda: reserve_inventory(order["order_id"]),  # Uses order
+        compensation=lambda inv: release_inventory(inv)
+    )
+
+    # Step 3: Use both order and inventory
+    shipment = await saga.step(
+        action=lambda: create_shipment(order, inventory),  # Uses both
+        compensation=lambda ship: cancel_shipment(ship)
+    )
 ```
 
-### Custom Compensation Arguments
+### 2. Automatic Compensation
 
-By default, the action's result is passed to the compensation function. You can override this:
+Compensations receive the action result automatically:
 
 ```python
-saga.add_step(
-    action=allocate_resource,
-    compensation=deallocate_resource,
-    action_args=("resource-id",),
-    compensation_args=("resource-id",),
-    compensation_kwargs={"force": True}
-)
+async with SimpleSaga() as saga:
+    result = await saga.step(
+        action=lambda: {"id": 123, "status": "created"},
+        compensation=lambda result: delete_resource(result["id"])  # Gets action result
+    )
 ```
 
-### Method Chaining
+### 3. Passing Additional Arguments to Compensation
+
+You can pass previous step results to compensations:
 
 ```python
-saga = (
-    SimpleSaga()
-    .add_step(action=step1, compensation=undo_step1)
-    .add_step(action=step2, compensation=undo_step2)
-    .add_step(action=step3, compensation=undo_step3)
-)
+async with SimpleSaga() as saga:
+    order = await saga.step(
+        action=lambda: create_order("ORDER-123"),
+        compensation=lambda order: cancel_order(order)
+    )
 
-results = await saga.execute()
+    inventory = await saga.step(
+        action=lambda: reserve_inventory(order["order_id"]),
+        compensation=lambda inv, order_ref: release_inventory(inv, order_ref),
+        compensation_args=(order,)  # Pass order to compensation
+    )
 ```
 
-### Reusing Saga Definitions
+The compensation receives:
+1. First argument: The action's result (`inv`)
+2. Following arguments: Values from `compensation_args` (`order_ref`)
+3. Keyword arguments: Values from `compensation_kwargs`
+
+### 4. Mixed Sync and Async Operations
 
 ```python
-saga = SimpleSaga()
-saga.add_step(action=step1, compensation=undo_step1)
-saga.add_step(action=step2, compensation=undo_step2)
+async with SimpleSaga() as saga:
+    # Synchronous step
+    order = await saga.step(
+        action=lambda: create_order("ORDER-123"),  # Sync
+        compensation=lambda order: cancel_order(order)
+    )
 
-# Execute multiple times
-await saga.execute()  # First execution
-await saga.execute()  # Second execution (automatically resets)
+    # Asynchronous step
+    inventory = await saga.step(
+        action=lambda: reserve_inventory("PRODUCT-456"),  # Async
+        compensation=lambda inv: release_inventory(inv)
+    )
 ```
 
-### Logging Control
+### 5. Logging Control
 
 The library uses Python's standard `logging` module:
 
@@ -180,33 +203,37 @@ logging.getLogger("simple_saga").setLevel(logging.WARNING)
 
 ### `SimpleSaga`
 
-Main class for defining and executing sagas.
+Main class for defining and executing sagas using Arrow-kt style DSL.
 
-#### `add_step(action, compensation, *, action_args=(), action_kwargs=None, compensation_args=(), compensation_kwargs=None)`
+#### `async step(action, compensation, *, action_args=(), action_kwargs=None, compensation_args=(), compensation_kwargs=None)`
 
-Add a step to the saga.
+Execute a single step in the saga. Must be called within an `async with SimpleSaga()` context manager.
 
 **Parameters:**
 - `action`: Function to execute (can be sync or async)
 - `compensation`: Function to compensate if this or later steps fail (can be sync or async)
 - `action_args`: Positional arguments for the action
 - `action_kwargs`: Keyword arguments for the action
-- `compensation_args`: Positional arguments for the compensation
+- `compensation_args`: Additional positional arguments for compensation (after action result)
 - `compensation_kwargs`: Keyword arguments for the compensation
 
-**Returns:** Self (for method chaining)
+**Returns:** The result of the action function
 
-#### `async execute() -> list[StepResult]`
+**Raises:** Any exception raised by the action function (after running compensations)
 
-Execute all steps in the saga. If any step fails, automatically runs compensation for all previously executed steps in reverse order.
-
-**Returns:** List of `StepResult` objects
-
-**Raises:** Re-raises the exception that caused the saga to fail
-
-#### `reset() -> None`
-
-Reset the saga state, clearing all executed steps. Called automatically by `execute()`.
+**Example:**
+```python
+async with SimpleSaga() as saga:
+    order = await saga.step(
+        action=lambda: create_order("ORDER-123"),
+        compensation=lambda order: cancel_order(order)
+    )
+    inventory = await saga.step(
+        action=lambda: reserve_inventory(order["order_id"]),
+        compensation=lambda inv, order_ref: release_inventory(inv, order_ref),
+        compensation_args=(order,)  # Pass order to compensation
+    )
+```
 
 ### `StepResult`
 
@@ -226,24 +253,32 @@ Dataclass representing a single step in the saga with action and compensation.
 - `compensation`: Callable - The compensation function
 - `action_args`: tuple - Positional arguments for the action
 - `action_kwargs`: dict - Keyword arguments for the action
-- `compensation_args`: tuple - Positional arguments for the compensation
+- `compensation_args`: tuple - Additional positional arguments for the compensation
 - `compensation_kwargs`: dict - Keyword arguments for the compensation
 
 ## Design Decisions
 
-### Why async execute()?
+### Why Arrow-kt Style?
 
-Even though the library supports synchronous functions, `execute()` is async to handle mixed sync/async steps uniformly. This allows you to:
-- Mix sync and async functions in the same saga
-- Use async patterns for I/O-bound operations
-- Keep the API simple and consistent
+The Arrow-kt style DSL with async context managers provides:
+- **Natural result chaining**: Use previous results directly as variables
+- **Automatic cleanup**: Context manager ensures compensations run on failure
+- **Intuitive flow**: Code reads like a sequence of operations
+- **Type safety**: Results are properly typed variables
 
 ### Compensation Behavior
 
 - Compensations run in **reverse order** (LIFO)
 - Compensation failures are **logged but don't stop the chain**
-- Each compensation receives the action's result by default
-- You can override compensation arguments if needed
+- Each compensation receives the action's result as the first argument
+- You can provide additional arguments via `compensation_args` and `compensation_kwargs`
+
+### Why Always Async?
+
+Even though the library supports synchronous functions, the `step()` method is async to:
+- Handle mixed sync/async steps uniformly
+- Use async patterns for I/O-bound operations
+- Keep the API simple and consistent
 
 ## Development
 
@@ -256,6 +291,9 @@ cd simple-saga
 
 # Install dependencies
 poetry install
+
+# Run tests
+poetry run pytest
 
 # Run type checking
 poetry run mypy simple_saga
@@ -272,6 +310,10 @@ simple-saga/
 │   ├── __init__.py      # Package exports
 │   ├── saga.py          # Main SimpleSaga implementation
 │   └── schema.py        # Data classes (StepResult, SagaStep)
+├── tests/
+│   ├── test_saga.py           # Core saga functionality
+│   ├── test_compensation.py   # Compensation behavior
+│   └── test_sync_async.py     # Mixed sync/async scenarios
 ├── pyproject.toml       # Project configuration
 ├── README.md            # This file
 └── CLAUDE.md           # Development guide
@@ -290,3 +332,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 This library implements the Saga pattern as described in:
 - ["Sagas" by Hector Garcia-Molina and Kenneth Salem (1987)](https://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf)
 - [Microservices Patterns by Chris Richardson](https://microservices.io/patterns/data/saga.html)
+- Inspired by [Arrow-kt](https://arrow-kt.io/)'s [Saga implementation](https://arrow-kt.io/learn/resilience/saga/)
