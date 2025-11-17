@@ -3,8 +3,9 @@
 A lightweight implementation of the Saga pattern for managing distributed transactions.
 """
 
-from .saga import SimpleSaga
-from .schema import SagaStep, StepResult
+from .saga.saga import Saga
+from .saga.sync_saga import SyncSaga
+from .schema import SagaStep, StepResult, SyncSagaStep
 
-__version__ = "0.0.5"
-__all__ = ["SimpleSaga", "StepResult", "SagaStep"]
+__version__ = "0.0.6"
+__all__ = ["Saga", "SyncSaga", "SagaStep", "StepResult", "SyncSagaStep"]

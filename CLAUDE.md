@@ -6,7 +6,7 @@ This document provides technical context and development guidelines for the Simp
 
 ### Core Components
 
-1. **`SimpleSaga`** (`saga.py`) - Main orchestrator with Arrow-kt style DSL
+1. **`Saga`** (`saga.py`) - Main orchestrator with Arrow-kt style DSL
    - Implements async context manager protocol (`__aenter__`, `__aexit__`)
    - Executes steps immediately with `step()` method
    - Handles both sync and async callables uniformly
@@ -24,7 +24,7 @@ This document provides technical context and development guidelines for the Simp
 
 ### Design Patterns
 
-- **Context Manager Pattern**: `async with SimpleSaga()` for automatic resource management
+- **Context Manager Pattern**: `async with Saga()` for automatic resource management
 - **Command Pattern**: Steps encapsulate actions and compensations
 - **Memento Pattern**: `_executed` list tracks state for rollback
 - **Functional Composition**: Results flow between steps as variables
@@ -62,7 +62,7 @@ async def step(
 ### Context Manager Protocol
 
 ```python
-async def __aenter__(self) -> "SimpleSaga":
+async def __aenter__(self) -> "Saga":
     """Enter saga context, reset state."""
     self._context_error = None
     self._executed.clear()
@@ -108,7 +108,7 @@ async def step(self, action, compensation, ...) -> Any:
 
 This enables natural result chaining:
 ```python
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     order = await saga.step(...)      # Returns order
     inventory = await saga.step(...)  # Can use 'order' variable
 ```
@@ -260,7 +260,7 @@ async def test_compensation_with_previous_results():
         raise ValueError("Fail")
 
     with pytest.raises(ValueError):
-        async with SimpleSaga() as saga:
+        async with Saga() as saga:
             order = await saga.step(action=create_order, compensation=cancel_order)
             inventory = await saga.step(
                 action=lambda: reserve_inventory(order),
@@ -306,7 +306,7 @@ async def test_compensation_with_previous_results():
 The context manager design allows for extensions:
 
 ```python
-class RetryableSaga(SimpleSaga):
+class RetryableSaga(Saga):
     """Saga with automatic retry on failure."""
 
     def __init__(self, max_retries: int = 3):
@@ -328,7 +328,7 @@ class RetryableSaga(SimpleSaga):
 
 Potential extension points:
 ```python
-class ObservableSaga(SimpleSaga):
+class ObservableSaga(Saga):
     async def step(self, action, compensation, **kwargs):
         # Pre-step hook
         self._emit_event("step_start", action.__name__)
@@ -346,7 +346,7 @@ class ObservableSaga(SimpleSaga):
 ### Middleware Pattern (Future)
 
 ```python
-class MiddlewareSaga(SimpleSaga):
+class MiddlewareSaga(Saga):
     def __init__(self, middlewares: list[Callable]):
         super().__init__()
         self.middlewares = middlewares
@@ -363,11 +363,11 @@ class MiddlewareSaga(SimpleSaga):
 
 ```python
 # ❌ Wrong
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     result = saga.step(action=..., compensation=...)  # Missing await!
 
 # ✅ Correct
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     result = await saga.step(action=..., compensation=...)
 ```
 
@@ -375,14 +375,14 @@ async with SimpleSaga() as saga:
 
 ```python
 # ❌ Wrong - steps outside context
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     order = await saga.step(...)
 
 # saga has exited, but trying to use it again
 inventory = await saga.step(...)  # Wrong! Context exited
 
 # ✅ Correct - keep all steps in context
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     order = await saga.step(...)
     inventory = await saga.step(...)  # Both in same context
 ```
@@ -493,18 +493,18 @@ Follow [Keep a Changelog](https://keepachangelog.com/):
 
 1. **Nested Sagas**
    ```python
-   async with SimpleSaga() as saga:
+   async with Saga() as saga:
        order = await saga.step(...)
 
        # Nested saga for complex operation
-       async with SimpleSaga() as nested_saga:
+       async with Saga() as nested_saga:
            payment = await nested_saga.step(...)
            shipment = await nested_saga.step(...)
    ```
 
 2. **Conditional Steps**
    ```python
-   async with SimpleSaga() as saga:
+   async with Saga() as saga:
        order = await saga.step(...)
 
        if order["requires_shipping"]:
@@ -513,7 +513,7 @@ Follow [Keep a Changelog](https://keepachangelog.com/):
 
 3. **Parallel Steps (Challenging)**
    ```python
-   async with SimpleSaga() as saga:
+   async with Saga() as saga:
        # Execute multiple steps concurrently
        results = await saga.parallel_steps([
            (action1, compensation1),
