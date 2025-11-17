@@ -1,94 +1,25 @@
-"""Tests for core SimpleSaga functionality."""
+"""Tests for core SimpleSaga functionality with Arrow-kt style API."""
 
 import pytest
 
-from simple_saga import SimpleSaga, StepResult
+from simple_saga import SimpleSaga
 
 
 class TestSagaConstruction:
-    """Test saga instance creation and step addition."""
+    """Test saga instance creation."""
 
     def test_create_empty_saga(self):
         """Test creating an empty saga."""
         saga = SimpleSaga()
-        assert saga.steps == []
-        assert saga.executed == []
+        assert saga._steps == []
+        assert saga._executed == []
 
-    def test_add_single_step(self, mock_action, mock_compensation):
-        """Test adding a single step to saga."""
-        saga = SimpleSaga()
-        result = saga.add_step(action=mock_action, compensation=mock_compensation)
-
-        # Should return self for chaining
-        assert result is saga
-        assert len(saga.steps) == 1
-        assert saga.steps[0].action == mock_action
-        assert saga.steps[0].compensation == mock_compensation
-
-    def test_add_multiple_steps(self, mock_action, mock_compensation):
-        """Test adding multiple steps to saga."""
-        saga = SimpleSaga()
-        saga.add_step(action=mock_action, compensation=mock_compensation)
-        saga.add_step(action=mock_action, compensation=mock_compensation)
-        saga.add_step(action=mock_action, compensation=mock_compensation)
-
-        assert len(saga.steps) == 3
-
-    def test_builder_pattern(self, mock_action, mock_compensation):
-        """Test fluent interface / builder pattern."""
-        saga = (
-            SimpleSaga()
-            .add_step(action=mock_action, compensation=mock_compensation)
-            .add_step(action=mock_action, compensation=mock_compensation)
-            .add_step(action=mock_action, compensation=mock_compensation)
-        )
-
-        assert len(saga.steps) == 3
-
-    def test_add_step_with_args(self):
-        """Test adding step with action arguments."""
-
-        def action(x: int, y: int) -> int:
-            return x + y
-
-        def compensation(result: int) -> None:
-            pass
-
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, action_args=(5, 3))
-
-        assert saga.steps[0].action_args == (5, 3)
-        assert saga.steps[0].action_kwargs == {}
-
-    def test_add_step_with_kwargs(self):
-        """Test adding step with action keyword arguments."""
-
-        def action(x: int = 0, y: int = 0) -> int:
-            return x + y
-
-        def compensation(result: int) -> None:
-            pass
-
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, action_kwargs={"x": 5, "y": 3})
-
-        assert saga.steps[0].action_args == ()
-        assert saga.steps[0].action_kwargs == {"x": 5, "y": 3}
-
-    def test_add_step_with_compensation_args(self):
-        """Test adding step with compensation arguments."""
-
-        def action() -> int:
-            return 42
-
-        def compensation(value: int) -> None:
-            pass
-
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, compensation_args=(100,))
-
-        assert saga.steps[0].compensation_args == (100,)
-        assert saga.steps[0].compensation_kwargs == {}
+    @pytest.mark.asyncio
+    async def test_context_manager_entry(self):
+        """Test entering saga context manager."""
+        async with SimpleSaga() as saga:
+            assert saga._steps == []
+            assert saga._executed == []
 
 
 class TestSagaExecution:
@@ -97,25 +28,27 @@ class TestSagaExecution:
     @pytest.mark.asyncio
     async def test_execute_empty_saga(self):
         """Test executing an empty saga."""
-        saga = SimpleSaga()
-        results = await saga.execute()
+        async with SimpleSaga() as saga:
+            pass  # No steps
 
-        assert results == []
-        assert saga.executed == []
+        assert saga._executed == []
 
     @pytest.mark.asyncio
-    async def test_execute_single_step(self, mock_action, mock_compensation):
+    async def test_execute_single_step(self):
         """Test executing saga with single step."""
-        saga = SimpleSaga()
-        saga.add_step(action=mock_action, compensation=mock_compensation)
 
-        results = await saga.execute()
+        def action() -> int:
+            return 42
 
-        assert len(results) == 1
-        assert isinstance(results[0], StepResult)
-        assert results[0].step_index == 0
-        assert results[0].step_name == "action"
-        assert results[0].result == 2  # mock_action returns value * 2, default value=1
+        def compensation(result: int) -> None:
+            pass
+
+        async with SimpleSaga() as saga:
+            result = await saga.step(action=action, compensation=compensation)
+
+            assert result == 42
+            assert len(saga._executed) == 1
+            assert saga._executed[0].result == 42
 
     @pytest.mark.asyncio
     async def test_execute_multiple_steps(self):
@@ -133,17 +66,15 @@ class TestSagaExecution:
         def compensation(result: str) -> None:
             pass
 
-        saga = SimpleSaga()
-        saga.add_step(action=step1, compensation=compensation)
-        saga.add_step(action=step2, compensation=compensation)
-        saga.add_step(action=step3, compensation=compensation)
+        async with SimpleSaga() as saga:
+            result1 = await saga.step(action=step1, compensation=compensation)
+            result2 = await saga.step(action=step2, compensation=compensation)
+            result3 = await saga.step(action=step3, compensation=compensation)
 
-        results = await saga.execute()
-
-        assert len(results) == 3
-        assert results[0].result == "step1"
-        assert results[1].result == "step2"
-        assert results[2].result == "step3"
+            assert result1 == "step1"
+            assert result2 == "step2"
+            assert result3 == "step3"
+            assert len(saga._executed) == 3
 
     @pytest.mark.asyncio
     async def test_execute_with_action_args(self):
@@ -155,13 +86,10 @@ class TestSagaExecution:
         def compensation(result: int) -> None:
             pass
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, action_args=(5, 7))
+        async with SimpleSaga() as saga:
+            result = await saga.step(action=action, compensation=compensation, action_args=(5, 7))
 
-        results = await saga.execute()
-
-        assert len(results) == 1
-        assert results[0].result == 35
+            assert result == 35
 
     @pytest.mark.asyncio
     async def test_execute_with_action_kwargs(self):
@@ -173,13 +101,10 @@ class TestSagaExecution:
         def compensation(result: int) -> None:
             pass
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation, action_kwargs={"x": 10, "y": 3})
+        async with SimpleSaga() as saga:
+            result = await saga.step(action=action, compensation=compensation, action_kwargs={"x": 10, "y": 3})
 
-        results = await saga.execute()
-
-        assert len(results) == 1
-        assert results[0].result == 7
+            assert result == 7
 
     @pytest.mark.asyncio
     async def test_step_results_metadata(self):
@@ -191,57 +116,89 @@ class TestSagaExecution:
         def compensation(result: int) -> None:
             pass
 
-        saga = SimpleSaga()
-        saga.add_step(action=my_custom_action, compensation=compensation)
+        async with SimpleSaga() as saga:
+            await saga.step(action=my_custom_action, compensation=compensation)
 
-        results = await saga.execute()
-
-        assert results[0].step_index == 0
-        assert results[0].step_name == "my_custom_action"
-        assert results[0].result == 42
+            assert saga._executed[0].step_index == 0
+            assert saga._executed[0].step_name == "my_custom_action"
+            assert saga._executed[0].result == 42
 
 
-class TestSagaReset:
-    """Test saga reset functionality."""
+class TestArrowKtStyleChaining:
+    """Test Arrow-kt style result chaining between steps."""
 
     @pytest.mark.asyncio
-    async def test_reset_clears_executed(self, mock_action, mock_compensation):
-        """Test that reset clears executed steps."""
-        saga = SimpleSaga()
-        saga.add_step(action=mock_action, compensation=mock_compensation)
+    async def test_use_previous_result_in_next_step(self):
+        """Test using previous step's result in next step."""
 
-        await saga.execute()
-        assert len(saga.executed) == 1
+        def create_order(order_id: str) -> dict:
+            return {"order_id": order_id, "status": "created"}
 
-        saga.reset()
-        assert saga.executed == []
-        assert len(saga.steps) == 1  # Steps should remain
+        def reserve_inventory(order: dict) -> dict:
+            return {"order_id": order["order_id"], "inventory_reserved": True}
 
-    @pytest.mark.asyncio
-    async def test_execute_resets_automatically(self):
-        """Test that execute resets executed steps automatically."""
-        call_count = 0
+        def charge_payment(inventory: dict) -> dict:
+            return {"order_id": inventory["order_id"], "payment_status": "charged"}
 
-        def action() -> int:
-            nonlocal call_count
-            call_count += 1
-            return call_count
-
-        def compensation(result: int) -> None:
+        def cancel_order(order: dict) -> None:
             pass
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation)
+        def release_inventory(inv: dict) -> None:
+            pass
 
-        # First execution
-        results1 = await saga.execute()
-        assert results1[0].result == 1
-        assert len(saga.executed) == 1
+        def refund_payment(payment: dict) -> None:
+            pass
 
-        # Second execution should reset and re-execute
-        results2 = await saga.execute()
-        assert results2[0].result == 2
-        assert len(saga.executed) == 1  # Only current execution
+        async with SimpleSaga() as saga:
+            # Step 1: Create order
+            order = await saga.step(
+                action=lambda: create_order("ORDER-123"),
+                compensation=lambda order: cancel_order(order),
+            )
+
+            # Step 2: Reserve inventory (uses order from step 1)
+            inventory = await saga.step(
+                action=lambda: reserve_inventory(order),
+                compensation=lambda inv: release_inventory(inv),
+            )
+
+            # Step 3: Charge payment (uses inventory from step 2)
+            payment = await saga.step(
+                action=lambda: charge_payment(inventory),
+                compensation=lambda pay: refund_payment(pay),
+            )
+
+            assert order["order_id"] == "ORDER-123"
+            assert inventory["inventory_reserved"] is True
+            assert payment["payment_status"] == "charged"
+            assert len(saga._executed) == 3
+
+    @pytest.mark.asyncio
+    async def test_complex_data_flow(self):
+        """Test complex data flow between steps."""
+
+        async with SimpleSaga() as saga:
+            # Step 1: Initialize data
+            data = await saga.step(
+                action=lambda: {"value": 10},
+                compensation=lambda: None,
+            )
+
+            # Step 2: Transform data
+            doubled = await saga.step(
+                action=lambda: {"value": data["value"] * 2},
+                compensation=lambda: None,
+            )
+
+            # Step 3: Accumulate
+            total = await saga.step(
+                action=lambda: {"total": data["value"] + doubled["value"]},
+                compensation=lambda: None,
+            )
+
+            assert data["value"] == 10
+            assert doubled["value"] == 20
+            assert total["total"] == 30
 
 
 class TestSagaReusability:
@@ -249,7 +206,7 @@ class TestSagaReusability:
 
     @pytest.mark.asyncio
     async def test_reuse_saga_multiple_times(self):
-        """Test executing the same saga multiple times."""
+        """Test executing the same saga definition multiple times."""
         execution_count = 0
 
         def action() -> int:
@@ -260,42 +217,33 @@ class TestSagaReusability:
         def compensation(result: int) -> None:
             pass
 
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation)
+        # First execution
+        async with SimpleSaga() as saga:
+            result1 = await saga.step(action=action, compensation=compensation)
+            assert result1 == 1
 
-        # Execute multiple times
-        results1 = await saga.execute()
-        assert results1[0].result == 1
+        # Second execution
+        async with SimpleSaga() as saga:
+            result2 = await saga.step(action=action, compensation=compensation)
+            assert result2 == 2
 
-        results2 = await saga.execute()
-        assert results2[0].result == 2
-
-        results3 = await saga.execute()
-        assert results3[0].result == 3
+        # Third execution
+        async with SimpleSaga() as saga:
+            result3 = await saga.step(action=action, compensation=compensation)
+            assert result3 == 3
 
     @pytest.mark.asyncio
-    async def test_reuse_saga_after_failure(self):
-        """Test reusing saga after a previous failure."""
-        call_count = 0
+    async def test_context_manager_resets_state(self):
+        """Test that each context manager entry resets state."""
+        saga_instance = SimpleSaga()
 
-        def action() -> int:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise ValueError("First call fails")
-            return call_count
+        # First use
+        async with saga_instance as saga:
+            await saga.step(action=lambda: 1, compensation=lambda: None)
+            assert len(saga._executed) == 1
 
-        def compensation(result: int) -> None:
-            pass
-
-        saga = SimpleSaga()
-        saga.add_step(action=action, compensation=compensation)
-
-        # First execution fails
-        with pytest.raises(ValueError, match="First call fails"):
-            await saga.execute()
-
-        # Second execution should succeed
-        results = await saga.execute()
-        assert results[0].result == 2
-        assert len(saga.executed) == 1
+        # Second use should have clean state
+        async with saga_instance as saga:
+            assert len(saga._executed) == 0
+            await saga.step(action=lambda: 2, compensation=lambda: None)
+            assert len(saga._executed) == 1
