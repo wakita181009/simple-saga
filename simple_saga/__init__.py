@@ -6,5 +6,5 @@ A lightweight implementation of the Saga pattern for managing distributed transa
 from .saga import SimpleSaga
 from .schema import SagaStep, StepResult
 
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 __all__ = ["SimpleSaga", "StepResult", "SagaStep"]
