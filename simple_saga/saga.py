@@ -1,8 +1,9 @@
 import asyncio
 import logging
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 
-from simple_saga.schema import SagaStep, StepResult
+from .schema import SagaStep, StepResult
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +39,14 @@ class SimpleSaga:
         self.executed: list[StepResult] = []
 
     def add_step(
-            self,
-            action: Callable,
-            compensation: Callable,
-            *,
-            action_args: tuple = (),
-            action_kwargs: dict[str, Any] | None = None,
-            compensation_args: tuple = (),
-            compensation_kwargs: dict[str, Any] | None = None
+        self,
+        action: Callable[..., Any],
+        compensation: Callable[..., Any],
+        *,
+        action_args: tuple[Any, ...] = (),
+        action_kwargs: dict[str, Any] | None = None,
+        compensation_args: tuple[Any, ...] = (),
+        compensation_kwargs: dict[str, Any] | None = None,
     ) -> "SimpleSaga":
         """
         Add a step to the saga.
@@ -67,7 +68,7 @@ class SimpleSaga:
             action_args=action_args,
             action_kwargs=action_kwargs or {},
             compensation_args=compensation_args,
-            compensation_kwargs=compensation_kwargs or {}
+            compensation_kwargs=compensation_kwargs or {},
         )
         self.steps.append(step)
         return self
@@ -118,7 +119,7 @@ class SimpleSaga:
             await self.__compensate()
             raise
 
-    async def __compensate(self) -> None:
+    async def __compensate(self) -> list[Exception]:
         """
         Run compensation for all executed steps in reverse order.
 
@@ -155,3 +156,4 @@ class SimpleSaga:
 
         if errors:
             logger.warning(f"Compensation completed with {len(errors)} error(s)")
+        return errors
