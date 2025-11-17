@@ -96,7 +96,8 @@ class SimpleSaga:
         action_kwargs: dict[str, Any] | None = None,
         compensation_args: tuple[Any, ...] = (),
         compensation_kwargs: dict[str, Any] | None = None,
-    ) -> StepResultT: ...
+    ) -> StepResultT:
+        ...
 
     @overload
     async def step(
@@ -108,7 +109,8 @@ class SimpleSaga:
         action_kwargs: dict[str, Any] | None = None,
         compensation_args: tuple[Any, ...] = (),
         compensation_kwargs: dict[str, Any] | None = None,
-    ) -> StepResultT: ...
+    ) -> StepResultT:
+        ...
 
     async def step(
         self,
