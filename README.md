@@ -32,7 +32,7 @@ poetry add simple-saga
 
 ```python
 import asyncio
-from simple_saga import SimpleSaga
+from simple_saga import Saga
 
 # Define your business logic
 def create_order(order_id: str) -> dict:
@@ -60,7 +60,7 @@ def refund_payment(payment: dict) -> None:
 # Execute the saga
 async def main():
     try:
-        async with SimpleSaga() as saga:
+        async with Saga() as saga:
             # Step 1: Create order
             order = await saga.step(
                 action=lambda: create_order("ORDER-123"),
@@ -113,7 +113,7 @@ Cancelling order: ORDER-123
 The most powerful feature is the ability to use results from previous steps:
 
 ```python
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     # Step 1: Create order
     order = await saga.step(
         action=lambda: create_order("ORDER-123"),
@@ -138,7 +138,7 @@ async with SimpleSaga() as saga:
 Compensations receive the action result automatically:
 
 ```python
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     result = await saga.step(
         action=lambda: {"id": 123, "status": "created"},
         compensation=lambda result: delete_resource(result["id"])  # Gets action result
@@ -150,7 +150,7 @@ async with SimpleSaga() as saga:
 You can pass previous step results to compensations:
 
 ```python
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     order = await saga.step(
         action=lambda: create_order("ORDER-123"),
         compensation=lambda order: cancel_order(order)
@@ -171,7 +171,7 @@ The compensation receives:
 ### 4. Mixed Sync and Async Operations
 
 ```python
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     # Synchronous step
     order = await saga.step(
         action=lambda: create_order("ORDER-123"),  # Sync
@@ -201,13 +201,13 @@ logging.getLogger("simple_saga").setLevel(logging.WARNING)
 
 ## API Reference
 
-### `SimpleSaga`
+### `Saga`
 
 Main class for defining and executing sagas using Arrow-kt style DSL.
 
 #### `async step(action, compensation, *, action_args=(), action_kwargs=None, compensation_args=(), compensation_kwargs=None)`
 
-Execute a single step in the saga. Must be called within an `async with SimpleSaga()` context manager.
+Execute a single step in the saga. Must be called within an `async with Saga()` context manager.
 
 **Parameters:**
 - `action`: Function to execute (can be sync or async)
@@ -223,7 +223,7 @@ Execute a single step in the saga. Must be called within an `async with SimpleSa
 
 **Example:**
 ```python
-async with SimpleSaga() as saga:
+async with Saga() as saga:
     order = await saga.step(
         action=lambda: create_order("ORDER-123"),
         compensation=lambda order: cancel_order(order)
@@ -308,7 +308,7 @@ poetry run ruff check simple_saga
 simple-saga/
 ├── simple_saga/
 │   ├── __init__.py      # Package exports
-│   ├── saga.py          # Main SimpleSaga implementation
+│   ├── saga.py          # Main Saga implementation
 │   └── schema.py        # Data classes (StepResult, SagaStep)
 ├── tests/
 │   ├── test_saga.py           # Core saga functionality

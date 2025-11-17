@@ -1,27 +1,30 @@
-import asyncio
+"""Asynchronous implementation of the Saga pattern."""
+
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar, cast, overload
+from typing import Any, Literal, TypeVar
 
-from .schema import SagaStep, StepResult
+from simple_saga.schema import SagaStep
+
+from .base import _SagaBase
 
 logger = logging.getLogger(__name__)
 
-# Type variable for step result type
 StepResultT = TypeVar("StepResultT")
 
 
-class SimpleSaga:
+class Saga(_SagaBase[SagaStep]):
     """
-    A simple implementation of the Saga pattern for managing distributed transactions.
+    Asynchronous implementation of the Saga pattern for managing distributed transactions.
 
     The Saga pattern breaks down a distributed transaction into a series of local transactions,
     each with a compensating transaction that can undo the changes if a later step fails.
 
-    This implementation uses Arrow-kt style DSL with async context manager:
+    This implementation uses Arrow-kt style DSL with async context manager and supports
+    asynchronous actions/compensations.
 
     Example:
-        async with SimpleSaga() as saga:
+        async with Saga() as saga:
             order = await saga.step(
                 action=lambda: create_order("ORDER-123"),
                 compensation=lambda order: cancel_order(order)
@@ -39,25 +42,15 @@ class SimpleSaga:
     in reverse order.
     """
 
-    def __init__(self) -> None:
-        """
-        Initialize a new SimpleSaga instance.
-        """
-        self._steps: list[SagaStep] = []
-        self._executed: list[StepResult] = []
-        self._context_error: BaseException | None = None
-
-    async def __aenter__(self) -> "SimpleSaga":
+    async def __aenter__(self) -> "Saga":
         """
         Enter the saga context manager.
 
         Returns:
             self: Returns the saga instance for use in the context
         """
-        self._context_error = None
-        self._executed.clear()
-        self._steps.clear()
-        logger.debug("Entering saga context")
+        self._reset_context()
+        logger.debug("Entering async saga context")
         return self
 
     async def __aexit__(
@@ -65,7 +58,7 @@ class SimpleSaga:
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: Any,
-    ) -> bool:
+    ) -> Literal[False]:
         """
         Exit the saga context manager.
 
@@ -86,36 +79,40 @@ class SimpleSaga:
 
         return False  # Propagate the exception
 
-    @overload
+    def _record_step(
+        self,
+        action: Callable[..., Awaitable[Any]],
+        compensation: Callable[..., Awaitable[Any]],
+        action_args: tuple[Any, ...],
+        action_kwargs: dict[str, Any],
+        compensation_args: tuple[Any, ...],
+        compensation_kwargs: dict[str, Any],
+    ) -> None:
+        """
+        Record an asynchronous step for potential compensation.
+
+        Args:
+            action: The action function
+            compensation: The compensation function
+            action_args: Positional arguments for action
+            action_kwargs: Keyword arguments for action
+            compensation_args: Additional positional arguments for compensation
+            compensation_kwargs: Keyword arguments for compensation
+        """
+        step = SagaStep(
+            action=action,
+            compensation=compensation,
+            action_args=action_args,
+            action_kwargs=action_kwargs,
+            compensation_args=compensation_args,
+            compensation_kwargs=compensation_kwargs,
+        )
+        self._steps.append(step)
+
     async def step(
         self,
         action: Callable[..., Awaitable[StepResultT]],
         compensation: Callable[..., Awaitable[Any]],
-        *,
-        action_args: tuple[Any, ...] = (),
-        action_kwargs: dict[str, Any] | None = None,
-        compensation_args: tuple[Any, ...] = (),
-        compensation_kwargs: dict[str, Any] | None = None,
-    ) -> StepResultT:
-        ...
-
-    @overload
-    async def step(
-        self,
-        action: Callable[..., StepResultT],
-        compensation: Callable[..., Any],
-        *,
-        action_args: tuple[Any, ...] = (),
-        action_kwargs: dict[str, Any] | None = None,
-        compensation_args: tuple[Any, ...] = (),
-        compensation_kwargs: dict[str, Any] | None = None,
-    ) -> StepResultT:
-        ...
-
-    async def step(
-        self,
-        action: Callable[..., StepResultT] | Callable[..., Awaitable[StepResultT]],
-        compensation: Callable[..., Any] | Callable[..., Awaitable[Any]],
         *,
         action_args: tuple[Any, ...] = (),
         action_kwargs: dict[str, Any] | None = None,
@@ -130,8 +127,8 @@ class SimpleSaga:
         If any step fails, all previously executed steps are automatically compensated.
 
         Args:
-            action: The function to execute for this step (can be sync or async)
-            compensation: The function to compensate if this or later steps fail (can be sync or async)
+            action: The asynchronous function to execute for this step
+            compensation: The asynchronous function to compensate if this or later steps fail
             action_args: Positional arguments to pass to the action
             action_kwargs: Keyword arguments to pass to the action
             compensation_args: Additional positional arguments to pass to compensation (after action result)
@@ -141,11 +138,10 @@ class SimpleSaga:
             The result of the action function
 
         Raises:
-            RuntimeError: If called outside of a context manager
             Exception: Any exception raised by the action function
 
         Example:
-            async with SimpleSaga() as saga:
+            async with Saga() as saga:
                 order = await saga.step(
                     action=lambda: create_order("ORDER-123"),
                     compensation=lambda order: cancel_order(order)
@@ -161,14 +157,11 @@ class SimpleSaga:
 
         logger.info(f"Executing step {step_index + 1}: {action_name}")
 
-        # Execute the action (async or sync)
-        if asyncio.iscoroutinefunction(action):
-            result = await action(*action_args, **(action_kwargs or {}))
-        else:
-            result = action(*action_args, **(action_kwargs or {}))
+        # Execute the async action
+        result = await action(*action_args, **(action_kwargs or {}))
 
         # Record the step for potential compensation
-        step = SagaStep(
+        self._record_step(
             action=action,
             compensation=compensation,
             action_args=action_args,
@@ -176,19 +169,13 @@ class SimpleSaga:
             compensation_args=compensation_args,
             compensation_kwargs=compensation_kwargs or {},
         )
-        self._steps.append(step)
 
         # Record the successful execution
-        step_result = StepResult(
-            step_index=step_index,
-            step_name=action_name,
-            result=result,
-        )
-        self._executed.append(step_result)
+        self._record_execution(step_index, action_name, result)
 
         logger.info(f"✅ Step {step_index + 1} completed: {action_name}")
 
-        return cast(StepResultT, result)
+        return result
 
     async def _compensate(self) -> list[Exception]:
         """
@@ -196,6 +183,9 @@ class SimpleSaga:
 
         This is called automatically when a step fails during execution.
         Compensation failures are logged but do not stop the compensation chain.
+
+        Returns:
+            List of exceptions that occurred during compensation
         """
         logger.info("🔄 Starting compensation...")
 
@@ -209,11 +199,8 @@ class SimpleSaga:
                 comp_args = (step_result.result,) + step.compensation_args
                 comp_kwargs = step.compensation_kwargs
 
-                # Execute compensation (async or sync)
-                if asyncio.iscoroutinefunction(step.compensation):
-                    await step.compensation(*comp_args, **comp_kwargs)
-                else:
-                    step.compensation(*comp_args, **comp_kwargs)
+                # Execute async compensation
+                await step.compensation(*comp_args, **comp_kwargs)
 
                 logger.info(f"✅ Compensated step {step_result.step_index + 1}: {step.compensation.__name__}")
             except Exception as e:

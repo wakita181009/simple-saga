@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "simple-saga"
-version = "0.0.5"
+version = "0.0.6"
 description = "A lightweight implementation of the Saga pattern for managing distributed transactions in Python"
 authors = ["Tetsuya Wakita <wakita181009@gmail.com>"]
 readme = "README.md"
 license = "MIT"
-keywords = ["saga", "distributed-transactions", "microservices", "transaction-management"]
+keywords = ["saga", "distributed-transactions", "microservices", "transaction-management", "arrow-kt"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
