@@ -7,5 +7,5 @@ from .saga.saga import Saga
 from .saga.sync_saga import SyncSaga
 from .schema import SagaStep, StepResult, SyncSagaStep
 
-__version__ = "0.0.6"
+__version__ = "0.1.0"
 __all__ = ["Saga", "SyncSaga", "SagaStep", "StepResult", "SyncSagaStep"]

@@ -8,10 +8,10 @@ The Saga pattern breaks down distributed transactions into a series of local tra
 
 ## Features
 
-- ✅ **Arrow-kt Style DSL** - Intuitive async context manager API
+- ✅ **Arrow-kt Style DSL** - Intuitive context manager API
 - 🔄 **Automatic Compensation** - Failed transactions are automatically rolled back
 - 🔗 **Result Chaining** - Use results from previous steps in subsequent steps
-- ⚡ **Sync & Async Support** - Works with both synchronous and asynchronous functions
+- ⚡ **Sync & Async Support** - Separate `Saga` (async) and `SyncSaga` (sync) implementations
 - 🔒 **Type Safe** - Full type hints with mypy support
 - 🪶 **Lightweight** - Zero dependencies (uses only Python standard library)
 - 📚 **Well Documented** - Comprehensive docstrings and examples
@@ -28,18 +28,18 @@ Or with Poetry:
 poetry add simple-saga
 ```
 
-## Quick Start
+## Quick Start (Async)
 
 ```python
 import asyncio
 from simple_saga import Saga
 
-# Define your business logic
-def create_order(order_id: str) -> dict:
+# Define your async business logic
+async def create_order(order_id: str) -> dict:
     print(f"Creating order: {order_id}")
     return {"order_id": order_id, "status": "created"}
 
-def cancel_order(order: dict) -> None:
+async def cancel_order(order: dict) -> None:
     print(f"Cancelling order: {order['order_id']}")
 
 async def reserve_inventory(product_id: str) -> dict:
@@ -49,12 +49,12 @@ async def reserve_inventory(product_id: str) -> dict:
 async def release_inventory(inventory: dict) -> None:
     print(f"Releasing inventory for: {inventory['product_id']}")
 
-def charge_payment(amount: float) -> dict:
+async def charge_payment(amount: float) -> dict:
     print(f"Charging payment: ${amount}")
     # Simulating a payment failure
     raise Exception("Payment failed")
 
-def refund_payment(payment: dict) -> None:
+async def refund_payment(payment: dict) -> None:
     print("Refunding payment")
 
 # Execute the saga
@@ -86,6 +86,67 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+```
+
+## Quick Start (Sync)
+
+For synchronous operations, use `SyncSaga`:
+
+```python
+from simple_saga import SyncSaga
+
+# Define your synchronous business logic
+def create_order(order_id: str) -> dict:
+    print(f"Creating order: {order_id}")
+    return {"order_id": order_id, "status": "created"}
+
+def cancel_order(order: dict) -> None:
+    print(f"Cancelling order: {order['order_id']}")
+
+def reserve_inventory(product_id: str) -> dict:
+    print(f"Reserving inventory for: {product_id}")
+    return {"product_id": product_id, "reserved": True}
+
+def release_inventory(inventory: dict) -> None:
+    print(f"Releasing inventory for: {inventory['product_id']}")
+
+def charge_payment(amount: float) -> dict:
+    print(f"Charging payment: ${amount}")
+    # Simulating a payment failure
+    raise Exception("Payment failed")
+
+def refund_payment(payment: dict) -> None:
+    print("Refunding payment")
+
+# Execute the saga
+def main():
+    try:
+        with SyncSaga() as saga:
+            # Step 1: Create order
+            order = saga.step(
+                action=lambda: create_order("ORDER-123"),
+                compensation=lambda order: cancel_order(order)
+            )
+
+            # Step 2: Reserve inventory (uses order from step 1)
+            inventory = saga.step(
+                action=lambda: reserve_inventory("PRODUCT-456"),
+                compensation=lambda inv: release_inventory(inv)
+            )
+
+            # Step 3: Charge payment (this will fail)
+            payment = saga.step(
+                action=lambda: charge_payment(99.99),
+                compensation=lambda pay: refund_payment(pay)
+            )
+
+            print("✅ All steps completed successfully!")
+    except Exception as e:
+        print(f"❌ Saga failed: {e}")
+        print("✅ All completed steps have been compensated automatically")
+
+if __name__ == "__main__":
+    main()
 ```
 
 ### Output
@@ -168,22 +229,19 @@ The compensation receives:
 2. Following arguments: Values from `compensation_args` (`order_ref`)
 3. Keyword arguments: Values from `compensation_kwargs`
 
-### 4. Mixed Sync and Async Operations
+### 4. Choosing Between Saga and SyncSaga
 
-```python
-async with Saga() as saga:
-    # Synchronous step
-    order = await saga.step(
-        action=lambda: create_order("ORDER-123"),  # Sync
-        compensation=lambda order: cancel_order(order)
-    )
+**Use `Saga` (async) when:**
+- Working with async I/O operations (database, network, file I/O)
+- Building async web applications (FastAPI, aiohttp)
+- Need to handle multiple concurrent operations
+- Using `asyncio` ecosystem
 
-    # Asynchronous step
-    inventory = await saga.step(
-        action=lambda: reserve_inventory("PRODUCT-456"),  # Async
-        compensation=lambda inv: release_inventory(inv)
-    )
-```
+**Use `SyncSaga` (sync) when:**
+- Working with synchronous libraries
+- Building traditional web applications (Flask, Django)
+- Simpler code without async/await complexity
+- Performance is not I/O bound
 
 ### 5. Logging Control
 
@@ -201,17 +259,17 @@ logging.getLogger("simple_saga").setLevel(logging.WARNING)
 
 ## API Reference
 
-### `Saga`
+### `Saga` (Async)
 
-Main class for defining and executing sagas using Arrow-kt style DSL.
+Asynchronous implementation for async/await operations.
 
 #### `async step(action, compensation, *, action_args=(), action_kwargs=None, compensation_args=(), compensation_kwargs=None)`
 
-Execute a single step in the saga. Must be called within an `async with Saga()` context manager.
+Execute a single asynchronous step in the saga. Must be called within an `async with Saga()` context manager.
 
 **Parameters:**
-- `action`: Function to execute (can be sync or async)
-- `compensation`: Function to compensate if this or later steps fail (can be sync or async)
+- `action`: Async function to execute
+- `compensation`: Async function to compensate if this or later steps fail
 - `action_args`: Positional arguments for the action
 - `action_kwargs`: Keyword arguments for the action
 - `compensation_args`: Additional positional arguments for compensation (after action result)
@@ -225,13 +283,37 @@ Execute a single step in the saga. Must be called within an `async with Saga()` 
 ```python
 async with Saga() as saga:
     order = await saga.step(
-        action=lambda: create_order("ORDER-123"),
-        compensation=lambda order: cancel_order(order)
+        action=create_order,
+        compensation=cancel_order
     )
-    inventory = await saga.step(
-        action=lambda: reserve_inventory(order["order_id"]),
-        compensation=lambda inv, order_ref: release_inventory(inv, order_ref),
-        compensation_args=(order,)  # Pass order to compensation
+```
+
+### `SyncSaga` (Sync)
+
+Synchronous implementation for traditional blocking operations.
+
+#### `step(action, compensation, *, action_args=(), action_kwargs=None, compensation_args=(), compensation_kwargs=None)`
+
+Execute a single synchronous step in the saga. Must be called within a `with SyncSaga()` context manager.
+
+**Parameters:**
+- `action`: Synchronous function to execute
+- `compensation`: Synchronous function to compensate if this or later steps fail
+- `action_args`: Positional arguments for the action
+- `action_kwargs`: Keyword arguments for the action
+- `compensation_args`: Additional positional arguments for compensation (after action result)
+- `compensation_kwargs`: Keyword arguments for the compensation
+
+**Returns:** The result of the action function
+
+**Raises:** Any exception raised by the action function (after running compensations)
+
+**Example:**
+```python
+with SyncSaga() as saga:
+    order = saga.step(
+        action=create_order,
+        compensation=cancel_order
     )
 ```
 
@@ -244,7 +326,7 @@ Dataclass containing the result of a saga step execution.
 - `step_name`: str - The name of the action function
 - `result`: Any - The result returned by the action
 
-### `SagaStep`
+### `SagaStep` / `SyncSagaStep`
 
 Dataclass representing a single step in the saga with action and compensation.
 
@@ -258,13 +340,14 @@ Dataclass representing a single step in the saga with action and compensation.
 
 ## Design Decisions
 
-### Why Arrow-kt Style?
+### Why Separate Saga and SyncSaga?
 
-The Arrow-kt style DSL with async context managers provides:
-- **Natural result chaining**: Use previous results directly as variables
-- **Automatic cleanup**: Context manager ensures compensations run on failure
-- **Intuitive flow**: Code reads like a sequence of operations
-- **Type safety**: Results are properly typed variables
+Version 0.0.6 introduced separate classes for async and sync operations:
+
+1. **Type Safety**: Clearer type hints and better IDE support
+2. **Performance**: Optimized implementations for each use case
+3. **Clarity**: Explicit choice between async and sync patterns
+4. **Maintenance**: Easier to maintain and extend independently
 
 ### Compensation Behavior
 
@@ -272,13 +355,6 @@ The Arrow-kt style DSL with async context managers provides:
 - Compensation failures are **logged but don't stop the chain**
 - Each compensation receives the action's result as the first argument
 - You can provide additional arguments via `compensation_args` and `compensation_kwargs`
-
-### Why Always Async?
-
-Even though the library supports synchronous functions, the `step()` method is async to:
-- Handle mixed sync/async steps uniformly
-- Use async patterns for I/O-bound operations
-- Keep the API simple and consistent
 
 ## Development
 
@@ -307,16 +383,24 @@ poetry run ruff check simple_saga
 ```
 simple-saga/
 ├── simple_saga/
-│   ├── __init__.py      # Package exports
-│   ├── saga.py          # Main Saga implementation
-│   └── schema.py        # Data classes (StepResult, SagaStep)
+│   ├── __init__.py           # Package exports
+│   ├── schema.py             # Data classes (StepResult, SagaStep, SyncSagaStep)
+│   └── saga/
+│       ├── __init__.py       # Saga package exports
+│       ├── base.py           # Base class with shared logic (_SagaBase)
+│       ├── saga.py           # Saga (async implementation)
+│       └── sync_saga.py      # SyncSaga (sync implementation)
 ├── tests/
-│   ├── test_saga.py           # Core saga functionality
-│   ├── test_compensation.py   # Compensation behavior
-│   └── test_sync_async.py     # Mixed sync/async scenarios
+│   ├── __init__.py
+│   ├── conftest.py
+│   └── saga/
+│       ├── __init__.py
+│       ├── test_saga.py           # Core async saga functionality
+│       ├── test_sync_saga.py      # Sync saga functionality
+│       └── test_compensation.py   # Compensation behavior
 ├── pyproject.toml       # Project configuration
 ├── README.md            # This file
-└── CLAUDE.md           # Development guide
+└── CLAUDE.md            # Development guide
 ```
 
 ## License

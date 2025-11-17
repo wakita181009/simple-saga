@@ -6,28 +6,46 @@ This document provides technical context and development guidelines for the Simp
 
 ### Core Components
 
-1. **`Saga`** (`saga.py`) - Main orchestrator with Arrow-kt style DSL
+1. **`_SagaBase`** (`saga/base.py`) - Base class with common logic
+   - Generic base class using `Generic[StepT]` for type safety
+   - Implements shared state management (`_steps`, `_executed`, `_context_error`)
+   - Provides `_reset_context()` and `_record_execution()` helper methods
+   - Used by both `Saga` and `SyncSaga` to avoid code duplication
+
+2. **`Saga`** (`saga/saga.py`) - Asynchronous saga orchestrator with Arrow-kt style DSL
+   - Extends `_SagaBase[SagaStep]` for async operations
    - Implements async context manager protocol (`__aenter__`, `__aexit__`)
-   - Executes steps immediately with `step()` method
-   - Handles both sync and async callables uniformly
-   - Uses Python's `asyncio.iscoroutinefunction()` for runtime type detection
+   - Executes async steps immediately with `step()` method
+   - All actions and compensations must be async (`Awaitable`)
    - Automatic compensation on context exit if exception occurs
 
-2. **`SagaStep`** (`schema.py`) - Step definition
-   - Immutable dataclass with `field(default_factory=dict)` for mutable defaults
-   - Stores action/compensation functions and their arguments
-   - Supports `compensation_args` and `compensation_kwargs` for passing additional data
+3. **`SyncSaga`** (`saga/sync_saga.py`) - Synchronous saga orchestrator
+   - Extends `_SagaBase[SyncSagaStep]` for sync operations
+   - Implements sync context manager protocol (`__enter__`, `__exit__`)
+   - Executes sync steps immediately with `step()` method
+   - All actions and compensations must be synchronous
+   - Automatic compensation on context exit if exception occurs
 
-3. **`StepResult`** (`schema.py`) - Execution result
+4. **`SagaStep`** and **`SyncSagaStep`** (`schema.py`) - Step definitions
+   - `SagaStep`: For async operations with `Callable[..., Awaitable[Any]]`
+   - `SyncSagaStep`: For sync operations with `Callable[..., Any]`
+   - Both are immutable dataclasses with `field(default_factory=dict)` for mutable defaults
+   - Store action/compensation functions and their arguments
+   - Support `compensation_args` and `compensation_kwargs` for passing additional data
+
+5. **`StepResult`** (`schema.py`) - Execution result
    - Records step index, name, and return value
    - Used for compensation tracking
+   - Shared by both async and sync implementations
 
 ### Design Patterns
 
-- **Context Manager Pattern**: `async with Saga()` for automatic resource management
+- **Context Manager Pattern**: `async with Saga()` and `with SyncSaga()` for automatic resource management
 - **Command Pattern**: Steps encapsulate actions and compensations
 - **Memento Pattern**: `_executed` list tracks state for rollback
 - **Functional Composition**: Results flow between steps as variables
+- **Generic Programming**: `_SagaBase[StepT]` provides type-safe code reuse
+- **Template Method Pattern**: Base class defines algorithm structure, subclasses implement specifics
 
 ### Arrow-kt Inspiration
 
@@ -41,32 +59,64 @@ Inspired by [Arrow-kt's Saga implementation](https://arrow-kt.io/learn/resilienc
 
 ### Type System
 
+The library uses generics and modern Python type hints for type safety:
+
 ```python
-# Uses modern Python type hints
-async def step(
-    self,
-    action: Callable[..., Any],
-    compensation: Callable[..., Any],
-    *,
-    action_args: tuple[Any, ...] = (),
-    action_kwargs: dict[str, Any] | None = None,
-    compensation_args: tuple[Any, ...] = (),
-    compensation_kwargs: dict[str, Any] | None = None,
-) -> Any:
+# Generic base class
+StepT = TypeVar("StepT", SyncSagaStep, SagaStep)
+
+class _SagaBase(Generic[StepT]):
+    def __init__(self) -> None:
+        self._steps: list[StepT] = []
+        self._executed: list[StepResult] = []
+
+# Async Saga with strict async types
+class Saga(_SagaBase[SagaStep]):
+    async def step(
+        self,
+        action: Callable[..., Awaitable[StepResultT]],
+        compensation: Callable[..., Awaitable[Any]],
+        *,
+        action_args: tuple[Any, ...] = (),
+        action_kwargs: dict[str, Any] | None = None,
+        compensation_args: tuple[Any, ...] = (),
+        compensation_kwargs: dict[str, Any] | None = None,
+    ) -> StepResultT:
+        ...
+
+# Sync Saga with sync types
+class SyncSaga(_SagaBase[SyncSagaStep]):
+    def step(
+        self,
+        action: Callable[..., StepResultT],
+        compensation: Callable[..., Any],
+        *,
+        action_args: tuple[Any, ...] = (),
+        action_kwargs: dict[str, Any] | None = None,
+        compensation_args: tuple[Any, ...] = (),
+        compensation_kwargs: dict[str, Any] | None = None,
+    ) -> StepResultT:
+        ...
 ```
 
+**Key type system features:**
 - Uses modern Python type hints (`|` instead of `Optional`, `list[]` instead of `List[]`)
+- Generic base class `_SagaBase[StepT]` for code reuse with type safety
+- `Saga` uses `Awaitable` types for async operations
+- `SyncSaga` uses plain `Callable` types for sync operations
+- TypeVar `StepResultT` preserves return types through the chain
 - Strict mypy configuration in `pyproject.toml`
 - All public methods have complete type annotations
 
 ### Context Manager Protocol
 
+Both `Saga` (async) and `SyncSaga` (sync) implement the context manager protocol:
+
+**Async version (`Saga`):**
 ```python
 async def __aenter__(self) -> "Saga":
     """Enter saga context, reset state."""
-    self._context_error = None
-    self._executed.clear()
-    self._steps.clear()
+    self._reset_context()  # Delegated to base class
     return self
 
 async def __aexit__(
@@ -74,60 +124,115 @@ async def __aexit__(
     exc_type: type[BaseException] | None,
     exc_val: BaseException | None,
     exc_tb: Any,
-) -> bool:
+) -> Literal[False]:
     """Exit saga context, run compensation if exception occurred."""
     if exc_val is not None:
+        self._context_error = exc_val
         await self._compensate()
     return False  # Propagate exception
 ```
 
+**Sync version (`SyncSaga`):**
+```python
+def __enter__(self) -> "SyncSaga":
+    """Enter saga context, reset state."""
+    self._reset_context()  # Delegated to base class
+    return self
+
+def __exit__(
+    self,
+    exc_type: type[BaseException] | None,
+    exc_val: BaseException | None,
+    exc_tb: Any,
+) -> Literal[False]:
+    """Exit saga context, run compensation if exception occurred."""
+    if exc_val is not None:
+        self._context_error = exc_val
+        self._compensate()
+    return False  # Propagate exception
+```
+
 **Key design decisions:**
-- Always returns `False` to propagate exceptions
+- Always returns `False` (`Literal[False]`) to propagate exceptions
 - Compensation runs automatically on any exception
-- State is reset on context entry for reusability
+- State is reset on context entry via `_reset_context()` for reusability
+- Both implementations delegate common logic to `_SagaBase`
 
 ### Immediate Step Execution
 
 Unlike traditional saga implementations where steps are defined then executed, this uses immediate execution:
 
+**Async version (`Saga.step()`):**
 ```python
-async def step(self, action, compensation, ...) -> Any:
-    """Execute step immediately and return result."""
-    # Execute action
-    if asyncio.iscoroutinefunction(action):
-        result = await action(*action_args, **action_kwargs)
-    else:
-        result = action(*action_args, **action_kwargs)
+async def step(self, action, compensation, ...) -> StepResultT:
+    """Execute async step immediately and return result."""
+    step_index = len(self._executed)
+    action_name = getattr(action, "__name__", "anonymous")
 
-    # Record for potential compensation
-    self._steps.append(step)
-    self._executed.append(step_result)
+    # Execute async action directly
+    result = await action(*action_args, **(action_kwargs or {}))
+
+    # Record step and execution for potential compensation
+    self._record_step(action, compensation, ...)
+    self._record_execution(step_index, action_name, result)
+
+    return result  # Return to user for chaining
+```
+
+**Sync version (`SyncSaga.step()`):**
+```python
+def step(self, action, compensation, ...) -> StepResultT:
+    """Execute sync step immediately and return result."""
+    step_index = len(self._executed)
+    action_name = getattr(action, "__name__", "anonymous")
+
+    # Execute sync action directly
+    result = action(*action_args, **(action_kwargs or {}))
+
+    # Record step and execution for potential compensation
+    self._record_step(action, compensation, ...)
+    self._record_execution(step_index, action_name, result)
 
     return result  # Return to user for chaining
 ```
 
 This enables natural result chaining:
 ```python
+# Async saga
 async with Saga() as saga:
     order = await saga.step(...)      # Returns order
     inventory = await saga.step(...)  # Can use 'order' variable
+
+# Sync saga
+with SyncSaga() as saga:
+    order = saga.step(...)            # Returns order (no await)
+    inventory = saga.step(...)        # Can use 'order' variable
 ```
 
-### Async/Sync Handling
+### Async/Sync Separation
 
-The library handles mixed sync/async execution:
+**Key architectural decision:** The library provides two separate classes instead of a single mixed-mode class:
 
+**Why separate `Saga` and `SyncSaga`?**
+- **Type safety**: Strict typing with `Awaitable` vs plain `Callable`
+- **Clarity**: No runtime checks needed (like `asyncio.iscoroutinefunction()`)
+- **Simplicity**: Each class has a single, clear responsibility
+- **Performance**: No runtime overhead for type checking
+- **Error prevention**: Compile-time detection of async/sync mismatches
+
+**Current approach (v0.1.0+):**
 ```python
-if asyncio.iscoroutinefunction(step.action):
-    result = await step.action(*step.action_args, **step.action_kwargs)
-else:
-    result = step.action(*step.action_args, **step.action_kwargs)
+# Saga: All async
+result = await action(...)  # Always awaits
+
+# SyncSaga: All sync
+result = action(...)  # Never awaits
 ```
 
-**Why `step()` is always async:**
-- Uniform API regardless of step types
-- Enables await for sync functions (no-op but consistent)
-- Simplifies type signatures and error handling
+**Usage guidelines:**
+- Use `Saga` when your actions are async (I/O-bound, network calls, async database queries)
+- Use `SyncSaga` when your actions are sync (CPU-bound, local operations)
+- Do not mix async and sync in the same saga instance
 
 ### Compensation Logic
 
@@ -216,10 +321,13 @@ Run: `poetry run ruff check simple_saga`
 
 ```
 tests/
-├── test_saga.py           # Core saga functionality with Arrow-kt style
-├── test_compensation.py   # Compensation behavior and argument passing
-├── test_sync_async.py     # Mixed sync/async scenarios
-└── conftest.py           # Shared fixtures
+├── __init__.py
+├── conftest.py                    # Shared fixtures
+└── saga/
+    ├── __init__.py
+    ├── test_saga.py              # Core async saga functionality
+    ├── test_sync_saga.py         # Sync saga functionality
+    └── test_compensation.py      # Compensation behavior and argument passing
 ```
 
 ### Key Test Scenarios
@@ -228,10 +336,11 @@ tests/
 2. **Early failure**: First step fails (no compensation needed)
 3. **Mid-failure**: Compensation for partial execution
 4. **Compensation failure**: Continue compensating despite errors
-5. **Mixed sync/async**: Various combinations
-6. **Result chaining**: Using previous step results in next steps
-7. **Compensation arguments**: Passing additional args to compensations
-8. **Context manager reuse**: Multiple uses of same saga instance
+5. **Async saga tests** (`test_saga.py`): Async-specific scenarios
+6. **Sync saga tests** (`test_sync_saga.py`): Sync-specific scenarios
+7. **Result chaining**: Using previous step results in next steps
+8. **Compensation arguments**: Passing additional args to compensations
+9. **Context manager reuse**: Multiple uses of same saga instance
 
 ### Test Example (Arrow-kt Style)
 
@@ -454,8 +563,8 @@ await saga.step(
 ### Python Version
 
 - **Minimum**: Python 3.10
-- **Tested**: 3.10, 3.11, 3.12, 3.13
-- **Reasoning**: Modern type hints (`X | Y`, `list[X]`), context manager protocol
+- **Tested**: 3.10, 3.11, 3.12, 3.13, 3.14
+- **Reasoning**: Modern type hints (`X | Y`, `list[X]`), context manager protocol, Generic types
 
 ## Release Process
 

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "simple-saga"
-version = "0.0.6"
+version = "0.1.0"
 description = "A lightweight implementation of the Saga pattern for managing distributed transactions in Python"
 authors = ["Tetsuya Wakita <wakita181009@gmail.com>"]
 readme = "README.md"
@@ -55,6 +55,3 @@ ignore = [
     "ARG001",
     "E501", # line too long (handled by black)
 ]
-
-[tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"]
