@@ -1,11 +1,14 @@
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from .schema import SagaStep, StepResult
 
 logger = logging.getLogger(__name__)
+
+# Type variable for step result type
+StepResultT = TypeVar("StepResultT")
 
 
 class SimpleSaga:
@@ -85,14 +88,14 @@ class SimpleSaga:
 
     async def step(
         self,
-        action: Callable[..., Any],
+        action: Callable[..., StepResultT],
         compensation: Callable[..., Any],
         *,
         action_args: tuple[Any, ...] = (),
         action_kwargs: dict[str, Any] | None = None,
         compensation_args: tuple[Any, ...] = (),
         compensation_kwargs: dict[str, Any] | None = None,
-    ) -> Any:
+    ) -> StepResultT:
         """
         Execute a single step in the saga (Arrow-kt style).
 
@@ -159,7 +162,7 @@ class SimpleSaga:
 
         logger.info(f"✅ Step {step_index + 1} completed: {action_name}")
 
-        return result
+        return cast(StepResultT, result)
 
     async def _compensate(self) -> list[Exception]:
         """
