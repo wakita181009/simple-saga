@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "simple-saga"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight implementation of the Saga pattern for managing distributed transactions in Python"
 authors = ["Tetsuya Wakita <wakita181009@gmail.com>"]
 readme = "README.md"
@@ -25,10 +25,11 @@ packages = [{ include = "simple_saga" }]
 python = "^3.10"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^9.0.1"
-pytest-asyncio = "^1.3.0"
-mypy = "^1.5.0"
-ruff = ">=0.1,<0.15"
+pytest = "==9.0.1"
+pytest-asyncio = "==1.3.0"
+pytest-cov = "==7.0.0"
+mypy = "==1.18.2"
+ruff = "==0.14.5"
 
 [build-system]
 requires = ["poetry-core"]
