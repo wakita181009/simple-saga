@@ -7,5 +7,5 @@ from .saga.saga import Saga
 from .saga.sync_saga import SyncSaga
 from .schema import SagaStep, StepResult, SyncSagaStep
 
-__version__ = "0.1.1"
+__version__ = __import__("importlib.metadata", fromlist=["version"]).version("simple-saga")
 __all__ = ["Saga", "SyncSaga", "SagaStep", "StepResult", "SyncSagaStep"]
