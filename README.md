@@ -1,5 +1,10 @@
 # Simple Saga
 
+[![CI](https://github.com/wakita181009/simple-saga/actions/workflows/ci.yml/badge.svg)](https://github.com/wakita181009/simple-saga/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/wakita181009/simple-saga/graph/badge.svg)](https://codecov.io/gh/wakita181009/simple-saga)
+[![PyPI Version](https://img.shields.io/pypi/v/simple-saga.svg)](https://pypi.org/project/simple-saga/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A lightweight implementation of the Saga pattern for managing distributed transactions in Python, inspired by [Arrow-kt](https://arrow-kt.io/)'s functional approach.
 
 ## Overview
@@ -362,7 +367,7 @@ Version 0.0.6 introduced separate classes for async and sync operations:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/simple-saga.git
+git clone https://github.com/wakita181009/simple-saga.git
 cd simple-saga
 
 # Install dependencies

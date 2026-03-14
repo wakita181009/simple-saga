@@ -116,13 +116,20 @@ jobs:
       - name: Install project
         run: poetry install --no-interaction
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
           if [ -d "tests" ]; then
-            poetry run pytest tests/ -v
+            poetry run pytest tests/ -v --cov=simple_saga --cov-report=xml
           else
             echo "No tests directory found, skipping tests"
           fi
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.13'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_on_error: false
 
   build:
     name: Build Package

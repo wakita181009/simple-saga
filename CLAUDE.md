@@ -677,7 +677,7 @@ When adding features, consider:
 ## Contact
 
 For questions or suggestions:
-- GitHub Issues: [Create an issue](https://github.com/yourusername/simple-saga/issues)
+- GitHub Issues: [Create an issue](https://github.com/wakita181009/simple-saga/issues)
 - Email: wakita181009@gmail.com
 
 ---
