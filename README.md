@@ -27,10 +27,10 @@ The Saga pattern breaks down distributed transactions into a series of local tra
 pip install simple-saga
 ```
 
-Or with Poetry:
+Or with uv:
 
 ```bash
-poetry add simple-saga
+uv add simple-saga
 ```
 
 ## Quick Start (Async)
@@ -371,16 +371,16 @@ git clone https://github.com/wakita181009/simple-saga.git
 cd simple-saga
 
 # Install dependencies
-poetry install
+uv sync
 
 # Run tests
-poetry run pytest
+uv run pytest
 
 # Run type checking
-poetry run mypy simple_saga
+uv run mypy simple_saga
 
 # Run linting
-poetry run ruff check simple_saga
+uv run ruff check simple_saga
 ```
 
 ### Project Structure

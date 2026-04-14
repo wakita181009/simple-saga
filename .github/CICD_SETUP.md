@@ -33,14 +33,8 @@ The CI/CD pipeline consists of two main workflows:
 - Uses matrix strategy for parallel execution
 
 #### 4. Build
-- Builds the package using Poetry
+- Builds the package using uv
 - Uploads build artifacts for verification
-
-### Caching
-
-The workflow uses caching for Poetry virtual environments to speed up builds:
-- Cache key: `venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}`
-- Cached path: `.venv`
 
 ## Publish Workflow
 
@@ -179,7 +173,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 # Update version in pyproject.toml
-poetry version "$VERSION"
+sed -i '' "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
 
 # Commit and tag
 git add pyproject.toml
@@ -206,20 +200,20 @@ chmod +x release.sh
 1. **Lint errors**
    ```bash
    # Run locally to fix issues
-   poetry run ruff check simple_saga --fix
-   poetry run ruff format simple_saga
+   uv run ruff check simple_saga --fix
+   uv run ruff format simple_saga
    ```
 
 2. **Type check errors**
    ```bash
    # Run locally to identify issues
-   poetry run mypy simple_saga
+   uv run mypy simple_saga
    ```
 
 3. **Test failures**
    ```bash
    # Run tests locally
-   poetry run pytest tests/ -v
+   uv run pytest tests/ -v
    ```
 
 ### PyPI Publishing Fails
@@ -295,13 +289,13 @@ Keep CHANGELOG.md updated:
 1. **Never commit API tokens** - Use GitHub Secrets or Trusted Publishing
 2. **Use environment protection** - Require reviews for production deployments
 3. **Pin action versions** - Use specific versions (e.g., `v4` not `@latest`)
-4. **Audit dependencies** - Regularly update and audit Poetry dependencies
+4. **Audit dependencies** - Regularly update and audit dependencies
 5. **Code signing** - Consider signing releases with GPG
 
 ## Additional Resources
 
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [Poetry Publishing](https://python-poetry.org/docs/libraries/#publishing-to-pypi)
+- [uv Documentation](https://docs.astral.sh/uv/)
 - [PyPI Trusted Publishers](https://docs.pypi.org/trusted-publishers/)
 - [Semantic Versioning](https://semver.org/)
 - [Keep a Changelog](https://keepachangelog.com/)
