@@ -1,10 +1,11 @@
-[tool.poetry]
+[project]
 name = "simple-saga"
 version = "0.1.4"
 description = "A lightweight implementation of the Saga pattern for managing distributed transactions in Python"
-authors = ["Tetsuya Wakita <wakita181009@gmail.com>"]
+authors = [{ name = "Tetsuya Wakita", email = "wakita181009@gmail.com" }]
 readme = "README.md"
 license = "MIT"
+requires-python = ">=3.10"
 keywords = ["saga", "distributed-transactions", "microservices", "transaction-management", "arrow-kt"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -19,21 +20,19 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
-packages = [{ include = "simple_saga" }]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "==9.0.2"
-pytest-asyncio = "==1.3.0"
-pytest-cov = "==7.0.0"
-mypy = "==1.20.1"
-ruff = "==0.15.6"
+[dependency-groups]
+dev = [
+    "pytest==9.0.2",
+    "pytest-asyncio==1.3.0",
+    "pytest-cov==7.0.0",
+    "mypy==1.20.1",
+    "ruff==0.15.6",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.mypy]
 python_version = "3.10"
@@ -42,6 +41,8 @@ strict = true
 [tool.ruff]
 target-version = "py310"
 line-length = 120
+
+[tool.ruff.lint]
 select = [
     "E", # pycodestyle errors
     "W", # pycodestyle warnings

@@ -4,10 +4,11 @@ Arrow-kt inspired saga pattern library for Python. Zero production dependencies.
 
 ## Development Commands
 
-- **Test**: `poetry run pytest`
-- **Type check**: `poetry run mypy simple_saga`
-- **Lint**: `poetry run ruff check simple_saga`
-- **Build**: `poetry build`
+- **Install**: `uv sync`
+- **Test**: `uv run pytest`
+- **Type check**: `uv run mypy simple_saga`
+- **Lint**: `uv run ruff check simple_saga`
+- **Build**: `uv build`
 
 ## Code Style
 

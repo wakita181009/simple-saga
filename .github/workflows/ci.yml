@@ -13,37 +13,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.10"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: latest
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+        run: uv python install 3.10
 
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-
-      - name: Install project
-        run: poetry install --no-interaction
+        run: uv sync
 
       - name: Run ruff check
-        run: poetry run ruff check simple_saga
+        run: uv run ruff check simple_saga
 
       - name: Run ruff format check
-        run: poetry run ruff format --check simple_saga
+        run: uv run ruff format --check simple_saga
 
   type-check:
     name: Type Check
@@ -51,34 +34,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.10"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: latest
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+        run: uv python install 3.10
 
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-
-      - name: Install project
-        run: poetry install --no-interaction
+        run: uv sync
 
       - name: Run mypy
-        run: poetry run mypy simple_saga
+        run: uv run mypy simple_saga
 
   test:
     name: Test Python ${{ matrix.python-version }}
@@ -90,36 +56,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: latest
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-
-      - name: Install project
-        run: poetry install --no-interaction
+        run: uv sync --python ${{ matrix.python-version }}
 
       - name: Run tests with coverage
         run: |
           if [ -d "tests" ]; then
-            poetry run pytest tests/ -v --cov=simple_saga --cov-report=xml
+            uv run pytest tests/ -v --cov=simple_saga --cov-report=xml
           else
             echo "No tests directory found, skipping tests"
           fi
@@ -137,20 +86,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.10"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: latest
-          virtualenvs-create: true
-          virtualenvs-in-project: true
+      - name: Set up Python
+        run: uv python install 3.10
 
       - name: Build package
-        run: poetry build
+        run: uv build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
