@@ -1,6 +1,6 @@
 [project]
 name = "simple-saga"
-version = "0.1.5"
+version = "0.1.6"
 description = "A lightweight implementation of the Saga pattern for managing distributed transactions in Python"
 authors = [{ name = "Tetsuya Wakita", email = "wakita181009@gmail.com" }]
 readme = "README.md"
