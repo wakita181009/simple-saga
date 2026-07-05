@@ -24,7 +24,7 @@ The CI/CD pipeline consists of two main workflows:
 - Uses Python 3.10
 
 #### 2. Type Check
-- Runs `mypy` for static type checking
+- Runs `ty` for static type checking
 - Uses Python 3.10
 
 #### 3. Test
@@ -207,7 +207,7 @@ chmod +x release.sh
 2. **Type check errors**
    ```bash
    # Run locally to identify issues
-   uv run mypy simple_saga
+   uv run ty check simple_saga
    ```
 
 3. **Test failures**

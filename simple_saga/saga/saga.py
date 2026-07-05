@@ -192,8 +192,9 @@ class Saga(_SagaBase[SagaStep]):
         errors: list[Exception] = []
         for step_result in reversed(self._executed):
             step = self._steps[step_result.step_index]
+            compensation_name = getattr(step.compensation, "__name__", "anonymous")
             try:
-                logger.info(f"Compensating step {step_result.step_index + 1}: {step.compensation.__name__}")
+                logger.info(f"Compensating step {step_result.step_index + 1}: {compensation_name}")
 
                 # Pass action result as first argument, followed by additional compensation_args
                 comp_args = (step_result.result,) + step.compensation_args
@@ -202,7 +203,7 @@ class Saga(_SagaBase[SagaStep]):
                 # Execute async compensation
                 await step.compensation(*comp_args, **comp_kwargs)
 
-                logger.info(f"✅ Compensated step {step_result.step_index + 1}: {step.compensation.__name__}")
+                logger.info(f"✅ Compensated step {step_result.step_index + 1}: {compensation_name}")
             except Exception as e:
                 errors.append(e)
                 logger.exception(f"⚠️ Compensation failed for step {step_result.step_index + 1}")

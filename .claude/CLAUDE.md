@@ -6,7 +6,7 @@ Arrow-kt inspired saga pattern library for Python. Zero production dependencies.
 
 - **Install**: `uv sync`
 - **Test**: `uv run pytest`
-- **Type check**: `uv run mypy simple_saga`
+- **Type check**: `uv run ty check simple_saga`
 - **Lint**: `uv run ruff check simple_saga`
 - **Build**: `uv build`
 
@@ -16,7 +16,7 @@ Arrow-kt inspired saga pattern library for Python. Zero production dependencies.
 - Line length: 120 characters
 - Google style docstrings
 - Type hints on all public APIs
-- Strict mypy (`strict = true`)
+- Type checked with ty
 - Ruff rules: `["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM"]`
 
 ## Key Design Decisions

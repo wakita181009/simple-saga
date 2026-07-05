@@ -17,7 +17,7 @@ The Saga pattern breaks down distributed transactions into a series of local tra
 - 🔄 **Automatic Compensation** - Failed transactions are automatically rolled back
 - 🔗 **Result Chaining** - Use results from previous steps in subsequent steps
 - ⚡ **Sync & Async Support** - Separate `Saga` (async) and `SyncSaga` (sync) implementations
-- 🔒 **Type Safe** - Full type hints with mypy support
+- 🔒 **Type Safe** - Full type hints checked with ty
 - 🪶 **Lightweight** - Zero dependencies (uses only Python standard library)
 - 📚 **Well Documented** - Comprehensive docstrings and examples
 
@@ -377,7 +377,7 @@ uv sync
 uv run pytest
 
 # Run type checking
-uv run mypy simple_saga
+uv run ty check simple_saga
 
 # Run linting
 uv run ruff check simple_saga

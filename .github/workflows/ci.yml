@@ -43,8 +43,8 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run mypy
-        run: uv run mypy simple_saga
+      - name: Run ty
+        run: uv run ty check simple_saga
 
   test:
     name: Test Python ${{ matrix.python-version }}
